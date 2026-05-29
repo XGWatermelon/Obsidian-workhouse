@@ -288,13 +288,17 @@ export function getDomainStats(app: App, domain: string): Record<string, number>
   return stats;
 }
 
-// 获取领域的文件列表
+// 获取领域的文件列表（大小写不敏感）
 export function getDomainFiles(app: App, domain: string): TFile[] {
   const files: TFile[] = [];
+  const domainLower = domain.toLowerCase();
 
   app.vault.getMarkdownFiles().forEach((file) => {
     const cache = app.metadataCache.getFileCache(file);
-    if (cache?.frontmatter?.tags?.includes(domain)) {
+    const tags = cache?.frontmatter?.tags;
+    if (!tags) return;
+    const matched = tags.some((t: string) => String(t).toLowerCase() === domainLower);
+    if (matched) {
       files.push(file);
     }
   });
