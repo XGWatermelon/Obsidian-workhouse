@@ -130,7 +130,7 @@ export class WorkspaceSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("事项文件夹")
-      .setDesc("事项存放的文件夹名称")
+      .setDesc("事项存放的文件夹名称（相对于根目录）")
       .addText((text) =>
         text
           .setPlaceholder("事项")
@@ -143,7 +143,7 @@ export class WorkspaceSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("待整理文件夹")
-      .setDesc("待整理文件存放的文件夹名称")
+      .setDesc("待整理文件存放的文件夹名称（相对于根目录）")
       .addText((text) =>
         text
           .setPlaceholder("待整理")
@@ -156,7 +156,7 @@ export class WorkspaceSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("节点文件夹")
-      .setDesc("知识图谱节点文件存放的文件夹名称")
+      .setDesc("知识图谱节点文件存放的文件夹名称（相对于根目录）")
       .addText((text) =>
         text
           .setPlaceholder("节点")
@@ -169,7 +169,7 @@ export class WorkspaceSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("日计划文件夹")
-      .setDesc("日计划文件存放的文件夹名称")
+      .setDesc("日计划文件存放的文件夹名称（相对于根目录）")
       .addText((text) =>
         text
           .setPlaceholder("日计划")
@@ -182,7 +182,7 @@ export class WorkspaceSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("周计划文件夹")
-      .setDesc("周计划文件存放的文件夹名称")
+      .setDesc("周计划文件存放的文件夹名称（相对于根目录）")
       .addText((text) =>
         text
           .setPlaceholder("周计划")
@@ -195,7 +195,7 @@ export class WorkspaceSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("清单文件夹")
-      .setDesc("工作流生成的清单文档存放的文件夹名称")
+      .setDesc("工作流生成的清单文档存放的文件夹名称（相对于根目录）")
       .addText((text) =>
         text
           .setPlaceholder("清单")
