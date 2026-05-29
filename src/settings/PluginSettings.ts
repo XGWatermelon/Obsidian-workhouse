@@ -116,6 +116,19 @@ export class WorkspaceSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("日记文件夹")
+      .setDesc("日记文件存放的文件夹名称（相对于根目录）")
+      .addText((text) =>
+        text
+          .setPlaceholder("日记")
+          .setValue(this.config.basic.folders.structure.diary?.name || "日记")
+          .onChange(async (value) => {
+            this.config.basic.folders.structure.diary = { ...this.config.basic.folders.structure.diary, name: value };
+            await this.plugin.saveConfig();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("事项文件夹")
       .setDesc("事项存放的文件夹名称")
       .addText((text) =>
