@@ -6,6 +6,8 @@
 
 一个 Obsidian 插件，提供统一的工作台界面，帮助你管理计划、事项、学习和知识。
 
+**欢迎下载使用！** 如果你有任何建议或发现了 bug，欢迎在 [Issues](https://github.com/XGWatermelon/Obsidian-workhouse/issues) 中反馈。你也可以 clone 源码，让 AI 帮你定制化修改，打造专属自己的工作台。当前版本已经过通用性调整，但可能仍有不足之处，敬请见谅。
+
 ---
 
 ## 功能特性
