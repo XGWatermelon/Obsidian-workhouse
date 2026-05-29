@@ -6,5 +6,6 @@
   "description": "智能工作台主页，包含状态栏、快捷操作、标签页导航",
   "author": "Workspace Plugin",
   "authorUrl": "",
-  "isDesktopOnly": false
+  "isDesktopOnly": false,
+  "license": "MIT"
 }
