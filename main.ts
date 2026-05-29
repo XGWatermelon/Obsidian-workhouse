@@ -18,6 +18,8 @@ export default class WorkspacePlugin extends Plugin {
 
     this.config = await loadConfig(this);
 
+    await initWorkspace(this.app);
+
     this.addSettingTab(new WorkspaceSettingTab(this.app, this));
 
     this.registerView(VIEW_TYPE_WORKSPACE, (leaf) => {
@@ -74,7 +76,6 @@ export default class WorkspacePlugin extends Plugin {
     if (this.initialized) return;
     this.initialized = true;
 
-    await initWorkspace(this.app);
     await registerPropertyTypes(this.app, this.config);
     registerEditorSuggests(this, this.config);
   }

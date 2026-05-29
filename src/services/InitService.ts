@@ -174,12 +174,6 @@ export async function initWorkspace(app: App): Promise<void> {
     const folderPath = getFolderPath(app, key);
     await ensureFolder(app, folderPath);
 
-    const folder = app.vault.getAbstractFileByPath(folderPath);
-    if (!folder) continue;
-
-    const children = (folder as any).children;
-    if (children && children.length > 0) continue;
-
     const demoFn = folderDemos[key];
     if (!demoFn) continue;
 
@@ -197,16 +191,10 @@ export async function initWorkspace(app: App): Promise<void> {
     const typeFolder = `${topicFolder}/${type.name}`;
     await ensureFolder(app, typeFolder);
 
-    // 子文件夹为空时生成 demo
-    const typeFolderEl = app.vault.getAbstractFileByPath(typeFolder);
-    if (typeFolderEl) {
-      const children = (typeFolderEl as any).children;
-      if (children && children.length === 0) {
-        const demoFile = `${typeFolder}/${moment().format("YYYY-MM-DD")}-示例${type.name}.md`;
-        if (!fileExists(app, demoFile)) {
-          await app.vault.create(demoFile, getTopicTemplate(app, type.name, `示例${type.name}`));
-        }
-      }
+    // 缺失 demo 时生成
+    const demoFile = `${typeFolder}/${moment().format("YYYY-MM-DD")}-示例${type.name}.md`;
+    if (!fileExists(app, demoFile)) {
+      await app.vault.create(demoFile, getTopicTemplate(app, type.name, `示例${type.name}`));
     }
   }
 
