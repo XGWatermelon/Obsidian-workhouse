@@ -1,5 +1,6 @@
 import { App, TFile, Notice } from "obsidian";
 import { getTopicsByStatus, getRecentFiles, getFolderStats } from "../../utils/dataview";
+import { getStatuses, getRootFolder, getLimit } from "../../config/accessors";
 
 export class KnowledgeTab {
   private container: HTMLElement;
@@ -24,7 +25,8 @@ export class KnowledgeTab {
     const section = this.container.createDiv({ cls: "workspace-section" });
     section.createEl("h3", { text: "事项清单" });
 
-    const topics = getTopicsByStatus(this.app, "进行中");
+    const activeStatus = getStatuses(this.app, "topic")[1]; // "进行中"
+    const topics = getTopicsByStatus(this.app, activeStatus);
     if (topics.length === 0) {
       section.createEl("p", {
         cls: "workspace-empty-text",
@@ -62,7 +64,8 @@ export class KnowledgeTab {
     const section = this.container.createDiv({ cls: "workspace-section" });
     section.createEl("h3", { text: "事项池" });
 
-    const topics = getTopicsByStatus(this.app, "待评估");
+    const defaultStatus = getStatuses(this.app, "topic")[0]; // "待评估"
+    const topics = getTopicsByStatus(this.app, defaultStatus);
     if (topics.length === 0) {
       section.createEl("p", {
         cls: "workspace-empty-text",
@@ -92,7 +95,9 @@ export class KnowledgeTab {
     const section = this.container.createDiv({ cls: "workspace-section" });
     section.createEl("h3", { text: "最近笔记" });
 
-    const files = getRecentFiles(this.app, 7);
+    const recentDays = 7;
+    const maxNotes = getLimit(this.app, "recentNotes");
+    const files = getRecentFiles(this.app, recentDays);
     if (files.length === 0) {
       section.createEl("p", {
         cls: "workspace-empty-text",
@@ -100,7 +105,7 @@ export class KnowledgeTab {
       });
     } else {
       const list = section.createEl("ul", { cls: "workspace-simple-list" });
-      files.slice(0, 15).forEach((file) => {
+      files.slice(0, maxNotes).forEach((file) => {
         const item = list.createEl("li");
         const link = item.createEl("a", {
           text: file.basename,
@@ -131,7 +136,6 @@ export class KnowledgeTab {
         text: "暂无文档",
       });
     } else {
-      // 显示统计卡片
       const grid = section.createDiv({ cls: "workspace-folder-grid" });
       folders.forEach(([folder, count]) => {
         const card = grid.createDiv({ cls: "workspace-folder-card" });
@@ -142,7 +146,6 @@ export class KnowledgeTab {
         });
       });
 
-      // 生成文档按钮
       const generateBtn = section.createDiv({ cls: "workspace-card-action", text: "生成完整文档概览" });
       generateBtn.addEventListener("click", () => {
         this.generateFullDocOverview();
@@ -152,8 +155,7 @@ export class KnowledgeTab {
 
   // 生成单个文件夹的文档
   private async generateAndOpenFolderDoc(folder: string): Promise<void> {
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
+    const workspaceRoot = getRootFolder(this.app);
     const docPath = `${workspaceRoot}/${folder}文档清单.md`;
     const today = new Date();
 
@@ -175,8 +177,7 @@ export class KnowledgeTab {
 
   // 生成完整的文档概览
   private async generateFullDocOverview(): Promise<void> {
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
+    const workspaceRoot = getRootFolder(this.app);
     const docPath = `${workspaceRoot}/文档概览.md`;
     const today = new Date();
 
@@ -186,11 +187,9 @@ export class KnowledgeTab {
     let content = `# 文档概览\n\n`;
     content += `> 生成时间：${today.toLocaleString()}\n\n`;
 
-    // 统计汇总
     const totalCount = folders.reduce((sum, [, count]) => sum + count, 0);
     content += `共 ${folders.length} 个文件夹，${totalCount} 个文档\n\n`;
 
-    // 文件夹列表
     content += `## 文件夹概览\n\n`;
     folders.forEach(([folder, count]) => {
       content += `- [[${workspaceRoot}/${folder}文档清单.md|${folder}]] (${count} 个文档)\n`;
@@ -198,7 +197,6 @@ export class KnowledgeTab {
 
     content += `\n---\n\n`;
 
-    // 每个文件夹的详细列表
     folders.forEach(([folder]) => {
       content += `## ${folder}\n\n`;
       const files = this.app.vault.getMarkdownFiles()
@@ -217,7 +215,6 @@ export class KnowledgeTab {
   // 创建或更新文档
   private async createOrUpdateDoc(docPath: string, content: string): Promise<void> {
     try {
-      // 确保文件夹存在
       const folder = docPath.split("/").slice(0, -1).join("/");
       if (!this.app.vault.getAbstractFileByPath(folder)) {
         await this.app.vault.createFolder(folder);

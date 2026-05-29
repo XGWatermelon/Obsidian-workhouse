@@ -3,7 +3,13 @@ import {
   fileExists,
   getOverdueTopics,
 } from "../utils/dataview";
-import { getDailyPlanPath } from "../utils/templates";
+import { getDailyPlanPath, getWeeklyPlanPath } from "../utils/templates";
+import {
+  getRootFolder,
+  getFolderPath,
+  getStatuses,
+  getStatusColor,
+} from "../config/accessors";
 
 export class StatusBar {
   private container: HTMLElement;
@@ -18,12 +24,9 @@ export class StatusBar {
     this.container.empty();
     this.container.addClass("workspace-status-bar");
 
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
-
-    const todayPath = getDailyPlanPath(workspaceRoot);
+    const todayPath = getDailyPlanPath(this.app);
     const todayExists = fileExists(this.app, todayPath);
-    const overdueTopics = getOverdueTopics(this.app, settings?.topicFolder || "事项");
+    const overdueTopics = getOverdueTopics(this.app);
 
     // 今日日计划
     this.createStatCard({
@@ -63,10 +66,7 @@ export class StatusBar {
       value: "-",
       color: "var(--ws-secondary)",
       onClick: () => {
-        const now = new Date();
-        const weekNum = this.getWeekNumber(now);
-        const year = now.getFullYear();
-        const planPath = `${workspaceRoot}/周计划/${year}-W${weekNum.toString().padStart(2, "0")}-本周计划.md`;
+        const planPath = getWeeklyPlanPath(this.app);
         if (fileExists(this.app, planPath)) {
           this.app.workspace.openLinkText(planPath, "");
         } else {
@@ -80,52 +80,52 @@ export class StatusBar {
     });
 
     // 逾期 - 生成详细列表文档
+    const overdueColor = getStatusColor(this.app, "overdue");
     const overdueCard = this.createStatCard({
       label: "逾期",
       value: String(overdueTopics.length),
-      color: overdueTopics.length > 0 ? "#FF6B6B" : "var(--ws-gray)",
+      color: overdueTopics.length > 0 ? overdueColor : "var(--ws-gray)",
       onClick: () => {
         this.generateAndOpenOverdueList(overdueTopics);
       },
     });
     if (overdueTopics.length > 0) {
       const valueEl = overdueCard.querySelector(".workspace-stat-value") as HTMLElement;
-      if (valueEl) valueEl.style.color = "#FF6B6B";
+      if (valueEl) valueEl.style.color = overdueColor;
     }
 
     // 已完成事项统计 - 生成详细列表文档
+    const completedColor = getStatusColor(this.app, "completed");
     const completedTopics = this.getCompletedTopics();
     const completedCard = this.createStatCard({
       label: "已完成",
       value: String(completedTopics.length),
-      color: "#77DD77",
+      color: completedColor,
       onClick: () => {
         this.generateAndOpenCompletedList(completedTopics);
       },
     });
-    // 已完成数字显示为绿色
     const completedValueEl = completedCard.querySelector(".workspace-stat-value") as HTMLElement;
-    if (completedValueEl) completedValueEl.style.color = "#77DD77";
+    if (completedValueEl) completedValueEl.style.color = completedColor;
 
     // 进行中事项统计 - 生成详细列表文档
+    const activeColor = getStatusColor(this.app, "active");
     const activeTopics = this.getActiveTopics();
     const activeCard = this.createStatCard({
       label: "进行中",
       value: String(activeTopics.length),
-      color: "#FFD93D",
+      color: activeColor,
       onClick: () => {
         this.generateAndOpenActiveList(activeTopics);
       },
     });
-    // 进行中数字显示为黄色
     const activeValueEl = activeCard.querySelector(".workspace-stat-value") as HTMLElement;
-    if (activeValueEl) activeValueEl.style.color = "#FFD93D";
+    if (activeValueEl) activeValueEl.style.color = activeColor;
   }
 
   // 生成并打开逾期事项列表
   private async generateAndOpenOverdueList(topics: any[]): Promise<void> {
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
+    const workspaceRoot = getRootFolder(this.app);
     const docPath = `${workspaceRoot}/逾期事项.md`;
     const today = new Date();
 
@@ -152,8 +152,7 @@ export class StatusBar {
 
   // 生成并打开已完成事项列表
   private async generateAndOpenCompletedList(topics: any[]): Promise<void> {
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
+    const workspaceRoot = getRootFolder(this.app);
     const docPath = `${workspaceRoot}/已完成事项.md`;
     const today = new Date();
 
@@ -179,8 +178,7 @@ export class StatusBar {
 
   // 生成并打开进行中事项列表
   private async generateAndOpenActiveList(topics: any[]): Promise<void> {
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
+    const workspaceRoot = getRootFolder(this.app);
     const docPath = `${workspaceRoot}/进行中事项.md`;
     const today = new Date();
 
@@ -207,7 +205,6 @@ export class StatusBar {
   // 创建或更新文档
   private async createOrUpdateDoc(docPath: string, content: string): Promise<void> {
     try {
-      // 确保文件夹存在
       const folder = docPath.split("/").slice(0, -1).join("/");
       if (!fileExists(this.app, folder)) {
         await this.app.vault.createFolder(folder);
@@ -228,8 +225,8 @@ export class StatusBar {
 
   // 获取已完成的事项
   private getCompletedTopics(): any[] {
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const topicFolder = settings?.topicFolder || "事项";
+    const topicFolder = getFolderPath(this.app, "topic");
+    const completedStatus = getStatuses(this.app, "topic")[2]; // "已完成"
 
     const files = this.app.vault.getMarkdownFiles()
       .filter((f) => f.path.startsWith(topicFolder + "/"));
@@ -237,7 +234,7 @@ export class StatusBar {
 
     files.forEach((file) => {
       const cache = this.app.metadataCache.getFileCache(file);
-      if (cache?.frontmatter?.status === "已完成") {
+      if (cache?.frontmatter?.status === completedStatus) {
         completed.push(file);
       }
     });
@@ -247,8 +244,8 @@ export class StatusBar {
 
   // 获取进行中的事项
   private getActiveTopics(): any[] {
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const topicFolder = settings?.topicFolder || "事项";
+    const topicFolder = getFolderPath(this.app, "topic");
+    const activeStatus = getStatuses(this.app, "topic")[1]; // "进行中"
 
     const files = this.app.vault.getMarkdownFiles()
       .filter((f) => f.path.startsWith(topicFolder + "/"));
@@ -256,7 +253,7 @@ export class StatusBar {
 
     files.forEach((file) => {
       const cache = this.app.metadataCache.getFileCache(file);
-      if (cache?.frontmatter?.status === "进行中") {
+      if (cache?.frontmatter?.status === activeStatus) {
         active.push(file);
       }
     });
@@ -301,15 +298,9 @@ export class StatusBar {
   private async countWeekTasks(): Promise<{ done: number; total: number }> {
     let done = 0;
     let total = 0;
-    const now = new Date();
-
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
 
     // 1. 统计周计划文件中的任务
-    const weekNum = this.getWeekNumber(now);
-    const year = now.getFullYear();
-    const planPath = `${workspaceRoot}/周计划/${year}-W${weekNum.toString().padStart(2, "0")}-本周计划.md`;
+    const planPath = getWeeklyPlanPath(this.app);
     if (fileExists(this.app, planPath)) {
       const file = this.app.vault.getAbstractFileByPath(planPath) as TFile;
       const content = await this.app.vault.cachedRead(file);
@@ -319,6 +310,7 @@ export class StatusBar {
     }
 
     // 2. 统计本周7天日计划中的任务
+    const now = new Date();
     const dayOfWeek = now.getDay();
     const monday = new Date(now);
     monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
@@ -326,7 +318,9 @@ export class StatusBar {
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
-      const path = `${workspaceRoot}/日计划/${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}-日计划.md`;
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const dailyPlanFolder = getFolderPath(this.app, "dailyPlan");
+      const path = `${dailyPlanFolder}/${dateStr}-日计划.md`;
       if (fileExists(this.app, path)) {
         const file = this.app.vault.getAbstractFileByPath(path) as TFile;
         const content = await this.app.vault.cachedRead(file);
@@ -356,12 +350,5 @@ export class StatusBar {
       }
     }
     return { done, total };
-  }
-
-  private getWeekNumber(date: Date): number {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   }
 }

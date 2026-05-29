@@ -1,7 +1,14 @@
-import { moment } from "obsidian";
+import { moment, App } from "obsidian";
+import {
+  getFolderPath,
+  generateFilePath,
+  getDefaultStatus,
+  getStatuses,
+  getWeeklyCategories,
+} from "../config/accessors";
 
 // 日记模板 - 记录今天做了什么
-export function getDiaryTemplate(): string {
+export function getDiaryTemplate(app: App): string {
   const today = moment().format("YYYY-MM-DD");
   return `---
 tags:
@@ -32,11 +39,11 @@ date: ${today}
 }
 
 // 日计划模板 - 今天要做什么
-export function getDailyPlanTemplate(weeklyPlanPath?: string): string {
+export function getDailyPlanTemplate(app: App, weeklyPlanPath?: string): string {
   const today = moment().format("YYYY-MM-DD");
   const weekNum = moment().format("WW");
   const year = moment().format("YYYY");
-  const planPath = weeklyPlanPath || `周计划/${year}-W${weekNum}-本周计划.md`;
+  const planPath = weeklyPlanPath || `${getFolderPath(app, "weeklyPlan")}/${year}-W${weekNum}-本周计划.md`;
 
   return `---
 tags:
@@ -81,18 +88,24 @@ weekly_plan: "[[${planPath}]]"
 }
 
 // 周计划模板 - 本周要做什么
-export function getWeeklyPlanTemplate(): string {
+export function getWeeklyPlanTemplate(app: App): string {
   const weekNum = moment().format("WW");
   const year = moment().format("YYYY");
   const startOfWeek = moment().startOf("isoWeek").format("MM.DD");
   const endOfWeek = moment().endOf("isoWeek").format("MM.DD");
   const weekId = `${year}-W${weekNum}`;
+  const defaultStatus = getDefaultStatus(app);
+  const categories = getWeeklyCategories(app);
 
   const days = [];
   for (let i = 0; i < 7; i++) {
     const day = moment().startOf("isoWeek").add(i, "days");
     days.push(`### ${day.format("dddd")} - ${day.format("MM.DD")}`);
   }
+
+  const categorySections = categories
+    .map((cat) => `### ${cat}\n\n- [ ] 内容 1\n- [ ] 内容 2`)
+    .join("\n\n");
 
   return `---
 tags:
@@ -102,7 +115,7 @@ type: 周计划
 week: "${weekId}"
 start_date: ${moment().startOf("isoWeek").format("YYYY-MM-DD")}
 end_date: ${moment().endOf("isoWeek").format("YYYY-MM-DD")}
-status: 进行中
+status: ${defaultStatus}
 ---
 
 # ${year} 年第 ${weekNum} 周计划
@@ -111,20 +124,7 @@ status: 进行中
 
 ## 本周目标
 
-### SAP 学习
-
-- [ ] 学习内容 1
-- [ ] 学习内容 2
-
-### 项目任务
-
-- [ ] 任务 1
-- [ ] 任务 2
-
-### 写作/事项
-
-- [ ] 事项 1
-- [ ] 事项 2
+${categorySections}
 
 ## 每日进展
 
@@ -145,22 +145,26 @@ ${days.map((d) => `${d}\n- `).join("\n")}
 
 // 事项模板
 export function getTopicTemplate(
+  app: App,
   type: string,
   title: string,
-  status: string = "待评估",
-  learningStatus: string = "待阅读",
+  status?: string,
+  learningStatus?: string,
   deadline: string = ""
 ): string {
   const today = moment().format("YYYY-MM-DD");
+  const defaultStatus = status || getDefaultStatus(app);
+  const defaultLearningStatus = learningStatus || getStatuses(app, "learning")[0];
+
   return `---
 tags:
   - 事项
 type: ${type}
-status: ${status}
+status: ${defaultStatus}
 created: ${today}
 updated: ${today}
 deadline: "${deadline}"
-学习状态: ${learningStatus}
+学习状态: ${defaultLearningStatus}
 ---
 
 # ${title}
@@ -181,20 +185,22 @@ deadline: "${deadline}"
 `;
 }
 
-// 路径生成函数（需要传入 workspaceRoot）
-export function getDailyPlanPath(workspaceRoot: string = "工作台"): string {
+// 路径生成函数
+export function getDailyPlanPath(app: App): string {
   const today = moment().format("YYYY-MM-DD");
-  return `${workspaceRoot}/日计划/${today}-日计划.md`;
+  return generateFilePath(app, "dailyPlan", { date: today });
 }
 
-export function getWeeklyPlanPath(workspaceRoot: string = "工作台"): string {
+export function getWeeklyPlanPath(app: App): string {
   const weekNum = moment().format("WW");
   const year = moment().format("YYYY");
-  return `${workspaceRoot}/周计划/${year}-W${weekNum}-本周计划.md`;
+  return generateFilePath(app, "weeklyPlan", { year, week: weekNum });
 }
 
-export function getTopicPath(title: string, topicFolder: string = "事项"): string {
+export function getTopicPath(app: App, title: string, type?: string): string {
   const today = moment().format("YYYY-MM-DD");
   const safeTitle = title.replace(/[\/\\:*?"<>|]/g, "-");
-  return `${topicFolder}/${today}-${safeTitle}.md`;
+  const topicFolder = getFolderPath(app, "topic");
+  const subFolder = type ? `${topicFolder}/${type}` : topicFolder;
+  return `${subFolder}/${today}-${safeTitle}.md`;
 }

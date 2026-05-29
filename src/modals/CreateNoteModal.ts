@@ -1,11 +1,13 @@
 import { App, Modal, Setting, Notice } from "obsidian";
 import { getTopicTemplate, getTopicPath } from "../utils/templates";
+import { getTypes, getStatuses, getTypeName } from "../config/accessors";
+import { ensureFolder } from "../utils/dataview";
 
 export class CreateNoteModal extends Modal {
   private noteType: string;
   private title: string = "";
-  private status: string = "待评估";
-  private learningStatus: string = "待阅读";
+  private status: string;
+  private learningStatus: string;
   private deadline: string = "";
   private onSubmit: (path: string, content: string) => void;
 
@@ -17,6 +19,9 @@ export class CreateNoteModal extends Modal {
     super(app);
     this.noteType = noteType;
     this.onSubmit = onSubmit;
+    // 从配置读取默认值
+    this.status = getStatuses(app, "topic")[0];
+    this.learningStatus = getStatuses(app, "learning")[0];
   }
 
   onOpen(): void {
@@ -32,31 +37,23 @@ export class CreateNoteModal extends Modal {
       })
     );
 
-    // 状态下拉框
-    new Setting(contentEl).setName("状态").addDropdown((dropdown) =>
-      dropdown
-        .addOption("待评估", "待评估")
-        .addOption("进行中", "进行中")
-        .addOption("已完成", "已完成")
-        .addOption("已放弃", "已放弃")
-        .setValue(this.status)
-        .onChange((value) => {
-          this.status = value;
-        })
-    );
+    // 状态下拉框 - 从配置读取
+    const topicStatuses = getStatuses(this.app, "topic");
+    new Setting(contentEl).setName("状态").addDropdown((dropdown) => {
+      topicStatuses.forEach((s) => dropdown.addOption(s, s));
+      dropdown.setValue(this.status).onChange((value) => {
+        this.status = value;
+      });
+    });
 
-    // 学习状态下拉框
-    new Setting(contentEl).setName("学习状态").addDropdown((dropdown) =>
-      dropdown
-        .addOption("待阅读", "待阅读")
-        .addOption("已阅读", "已阅读")
-        .addOption("已理解", "已理解")
-        .addOption("已掌握", "已掌握")
-        .setValue(this.learningStatus)
-        .onChange((value) => {
-          this.learningStatus = value;
-        })
-    );
+    // 学习状态下拉框 - 从配置读取
+    const learningStatuses = getStatuses(this.app, "learning");
+    new Setting(contentEl).setName("学习状态").addDropdown((dropdown) => {
+      learningStatuses.forEach((s) => dropdown.addOption(s, s));
+      dropdown.setValue(this.learningStatus).onChange((value) => {
+        this.learningStatus = value;
+      });
+    });
 
     // 截止日期选择器
     const dateSetting = new Setting(contentEl).setName("截止日期");
@@ -85,28 +82,11 @@ export class CreateNoteModal extends Modal {
   }
 
   private getTypeLabel(): string {
-    const labels: Record<string, string> = {
-      task: "任务",
-      idea: "想法",
-      project: "项目",
-      inspiration: "灵感",
-      writing: "写作",
-      learning: "学习",
-      diary: "日记",
-    };
-    return labels[this.noteType] || "笔记";
+    return getTypeName(this.app, this.noteType);
   }
 
   private getTypeValue(): string {
-    const typeMap: Record<string, string> = {
-      task: "任务",
-      idea: "想法",
-      project: "项目",
-      inspiration: "灵感",
-      writing: "写作",
-      learning: "学习",
-    };
-    return typeMap[this.noteType] || "任务";
+    return getTypeName(this.app, this.noteType);
   }
 
   private async submitTopic(): Promise<void> {
@@ -114,14 +94,18 @@ export class CreateNoteModal extends Modal {
       return;
     }
     try {
-      const path = getTopicPath(this.title);
+      const path = getTopicPath(this.app, this.title, this.getTypeValue());
       const content = getTopicTemplate(
+        this.app,
         this.getTypeValue(),
         this.title,
         this.status,
         this.learningStatus,
         this.deadline
       );
+      // 确保父文件夹存在
+      const folder = path.split("/").slice(0, -1).join("/");
+      await ensureFolder(this.app, folder);
       this.onSubmit(path, content);
       this.close();
     } catch (error) {

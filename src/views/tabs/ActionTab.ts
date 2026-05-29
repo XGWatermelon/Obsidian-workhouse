@@ -5,7 +5,14 @@ import {
   getLearningStats,
   getRecentFiles,
 } from "../../utils/dataview";
-import { getDailyPlanPath } from "../../utils/templates";
+import { getDailyPlanPath, getWeeklyPlanPath } from "../../utils/templates";
+import {
+  getRootFolder,
+  getStatuses,
+  getStatusColor,
+  getFieldName,
+  getLimit,
+} from "../../config/accessors";
 
 export class ActionTab {
   private container: HTMLElement;
@@ -78,8 +85,7 @@ export class ActionTab {
 
   // 获取常用入口文档路径
   private getQuickLinksDocPath(): string {
-    const settings = (this.app as any).plugins?.getPlugin?.("worktop")?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
+    const workspaceRoot = getRootFolder(this.app);
     return `${workspaceRoot}/常用入口.md`;
   }
 
@@ -96,10 +102,8 @@ export class ActionTab {
       const content = await this.app.vault.read(file);
       const links: { label: string; path: string }[] = [];
 
-      // 解析文档内容
       const lines = content.split("\n");
       for (const line of lines) {
-        // 格式：- [[路径|显示名称]]
         const match = line.match(/^- \[\[([^|]+)\|(.+)\]\]$/);
         if (match) {
           links.push({ path: match[1], label: match[2] });
@@ -116,15 +120,12 @@ export class ActionTab {
   // 保存链接
   private async saveQuickLinks(links: { label: string; path: string }[]): Promise<void> {
     const docPath = this.getQuickLinksDocPath();
-    const settings = (this.app as any).plugins?.getPlugin?.("worktop")?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
+    const workspaceRoot = getRootFolder(this.app);
 
-    // 确保工作台文件夹存在
     if (!fileExists(this.app, workspaceRoot)) {
       await this.app.vault.createFolder(workspaceRoot);
     }
 
-    // 生成文档内容
     let content = `# 常用入口\n\n`;
     content += `> 快速访问常用文档\n\n`;
 
@@ -132,7 +133,6 @@ export class ActionTab {
       content += `- [[${link.path}|${link.label}]]\n`;
     });
 
-    // 创建或更新文档
     try {
       const existing = this.app.vault.getAbstractFileByPath(docPath);
       if (existing) {
@@ -152,7 +152,7 @@ export class ActionTab {
       const label = path.split("/").pop()?.replace(".md", "") || path;
       links.push({ label, path });
       await this.saveQuickLinks(links);
-      this.render(); // 刷新
+      this.render();
     });
     modal.open();
   }
@@ -162,16 +162,14 @@ export class ActionTab {
     const links = await this.getQuickLinks();
     links.splice(index, 1);
     await this.saveQuickLinks(links);
-    this.render(); // 刷新
+    this.render();
   }
 
   private renderTodayTasks(container: HTMLElement): void {
     const card = container.createDiv({ cls: "workspace-card" });
     card.createEl("h3", { text: "今日要事" });
 
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
-    const todayPath = getDailyPlanPath(workspaceRoot);
+    const todayPath = getDailyPlanPath(this.app);
     if (fileExists(this.app, todayPath)) {
       const file = this.app.vault.getAbstractFileByPath(todayPath) as TFile;
       this.app.vault.cachedRead(file).then((content) => {
@@ -206,12 +204,14 @@ export class ActionTab {
     const card = container.createDiv({ cls: "workspace-card" });
     card.createEl("h3", { text: "活跃任务" });
 
-    const topics = getTopicsByStatus(this.app, "进行中");
+    const activeStatus = getStatuses(this.app, "topic")[1]; // "进行中"
+    const maxActive = getLimit(this.app, "activeTopics");
+    const topics = getTopicsByStatus(this.app, activeStatus);
     if (topics.length === 0) {
       card.createEl("p", { cls: "workspace-card-empty-text", text: "暂无进行中的任务" });
     } else {
       const list = card.createEl("ul", { cls: "workspace-topic-list" });
-      topics.slice(0, 10).forEach((topic) => {
+      topics.slice(0, maxActive).forEach((topic) => {
         const item = list.createEl("li");
         item.createSpan({ cls: `workspace-type-tag ${topic.type}`, text: topic.type });
         const titleLink = item.createEl("a", { text: topic.title, href: "#" });
@@ -227,13 +227,7 @@ export class ActionTab {
     const card = container.createDiv({ cls: "workspace-card" });
     card.createEl("h3", { text: "本周计划" });
 
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
-
-    const now = new Date();
-    const weekNum = this.getWeekNumber(now);
-    const year = now.getFullYear();
-    const planPath = `${workspaceRoot}/周计划/${year}-W${weekNum.toString().padStart(2, "0")}-本周计划.md`;
+    const planPath = getWeeklyPlanPath(this.app);
 
     if (fileExists(this.app, planPath)) {
       const file = this.app.vault.getAbstractFileByPath(planPath) as TFile;
@@ -269,36 +263,35 @@ export class ActionTab {
     const card = container.createDiv({ cls: "workspace-card" });
     card.createEl("h3", { text: "学习进度" });
 
-    const settings = (this.app as any).plugins?.plugins?.["worktop"]?.settings;
-    const workspaceRoot = settings?.workspaceRoot || "工作台";
-    const learningStatusField = settings?.fieldNames?.learningStatus || "学习状态";
-
-    const stats = getLearningStats(this.app, learningStatusField);
+    const learningStatuses = getStatuses(this.app, "learning");
+    const stats = getLearningStats(this.app);
     const statsEl = card.createDiv({ cls: "workspace-learning-stats" });
 
-    const colors: Record<string, string> = {
-      待阅读: "var(--ws-gray)",
-      已阅读: "var(--ws-primary)",
-      已理解: "#4FC1FF",
-      已掌握: "var(--ws-secondary)",
+    // 从配置读取颜色
+    const colorMap: Record<string, string> = {
+      [learningStatuses[0]]: "var(--ws-gray)",      // 待阅读
+      [learningStatuses[1]]: "var(--ws-primary)",    // 已阅读
+      [learningStatuses[2]]: getStatusColor(this.app, "understanding"), // 已理解
+      [learningStatuses[3]]: "var(--ws-secondary)",  // 已掌握
     };
 
     Object.entries(stats).forEach(([status, count]) => {
       const statItem = statsEl.createDiv({ cls: "workspace-stat-item" });
       statItem.style.cursor = "pointer";
       const dot = statItem.createSpan({ cls: "workspace-stat-dot" });
-      dot.style.background = colors[status];
+      dot.style.background = colorMap[status] || "var(--ws-gray)";
       statItem.createSpan({ text: `${status}: ${count}` });
 
-      // 点击生成学习状态文档
       statItem.addEventListener("click", async () => {
-        await this.generateLearningStatusDoc(status, learningStatusField, workspaceRoot);
+        await this.generateLearningStatusDoc(status);
       });
     });
   }
 
   // 生成学习状态文档
-  private async generateLearningStatusDoc(status: string, learningStatusField: string, workspaceRoot: string): Promise<void> {
+  private async generateLearningStatusDoc(status: string): Promise<void> {
+    const workspaceRoot = getRootFolder(this.app);
+    const learningStatusField = getFieldName(this.app, "learningStatus");
     const docPath = `${workspaceRoot}/学习状态-${status}.md`;
 
     const files = this.app.vault.getMarkdownFiles().filter(file => {
@@ -320,7 +313,6 @@ export class ActionTab {
     });
 
     try {
-      // 确保文件夹存在
       if (!fileExists(this.app, workspaceRoot)) {
         await this.app.vault.createFolder(workspaceRoot);
       }
@@ -342,12 +334,14 @@ export class ActionTab {
     const card = container.createDiv({ cls: "workspace-card" });
     card.createEl("h3", { text: "最近修改" });
 
-    const files = getRecentFiles(this.app, 7);
+    const recentDays = 7;
+    const maxNotes = getLimit(this.app, "recentNotes");
+    const files = getRecentFiles(this.app, recentDays);
     if (files.length === 0) {
       card.createEl("p", { cls: "workspace-card-empty-text", text: "暂无最近修改" });
     } else {
       const list = card.createEl("ul", { cls: "workspace-file-list" });
-      files.slice(0, 10).forEach((file) => {
+      files.slice(0, maxNotes).forEach((file) => {
         const item = list.createEl("li");
         const link = item.createEl("a", { text: file.basename, href: "#" });
         link.addEventListener("click", (e) => {
@@ -394,13 +388,6 @@ export class ActionTab {
     }
     return goals;
   }
-
-  private getWeekNumber(date: Date): number {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  }
 }
 
 // 文件搜索弹窗（模糊匹配）
@@ -415,6 +402,8 @@ class FileSearchModal {
 
   open(): void {
     const { Modal } = require("obsidian");
+    const searchMinChars = 2;
+    const searchResults = 20;
 
     class SearchModal extends Modal {
       private onSubmit: (path: string) => void;
@@ -430,23 +419,18 @@ class FileSearchModal {
         const { contentEl } = this;
         contentEl.createEl("h2", { text: "添加常用入口" });
 
-        // 搜索输入框
         const searchContainer = contentEl.createDiv({ cls: "workspace-search-container" });
         this.searchInput = searchContainer.createEl("input", {
           cls: "workspace-search-input",
           attr: { placeholder: "输入文件名进行搜索...", type: "text" },
         });
 
-        // 结果容器
         this.resultsContainer = contentEl.createDiv({ cls: "workspace-search-results" });
 
-        // 监听输入事件
         if (this.searchInput) {
           this.searchInput.addEventListener("input", () => {
             this.updateResults();
           });
-
-          // 聚焦输入框
           this.searchInput.focus();
         }
       }
@@ -457,22 +441,21 @@ class FileSearchModal {
         const query = this.searchInput.value.toLowerCase().trim();
         this.resultsContainer.empty();
 
-        if (query.length < 2) {
+        if (query.length < searchMinChars) {
           this.resultsContainer.createEl("p", {
             cls: "workspace-search-hint",
-            text: "请输入至少2个字符进行搜索",
+            text: `请输入至少${searchMinChars}个字符进行搜索`,
           });
           return;
         }
 
-        // 搜索文件
         const files = this.app.vault.getMarkdownFiles()
           .filter((file: any) => {
             const fileName = file.basename.toLowerCase();
             const filePath = file.path.toLowerCase();
             return fileName.includes(query) || filePath.includes(query);
           })
-          .slice(0, 20); // 限制结果数量
+          .slice(0, searchResults);
 
         if (files.length === 0) {
           this.resultsContainer.createEl("p", {
@@ -482,12 +465,11 @@ class FileSearchModal {
           return;
         }
 
-        // 显示结果
         const list = this.resultsContainer.createEl("ul", { cls: "workspace-search-list" });
         files.forEach((file: any) => {
           const item = list.createEl("li", { cls: "workspace-search-item" });
-          const nameEl = item.createDiv({ cls: "workspace-search-name", text: file.basename });
-          const pathEl = item.createDiv({ cls: "workspace-search-path", text: file.path });
+          item.createDiv({ cls: "workspace-search-name", text: file.basename });
+          item.createDiv({ cls: "workspace-search-path", text: file.path });
 
           item.addEventListener("click", () => {
             this.onSubmit(file.path);

@@ -1,6 +1,15 @@
-import { App, Notice, TFile } from "obsidian";
+import { App, Notice } from "obsidian";
 import { CreateNoteModal } from "../modals/CreateNoteModal";
-import { getTopicsByStatus, getRecentFiles, fileExists } from "../utils/dataview";
+import { ensureFolder } from "../utils/dataview";
+import { getTypes, getFolderPath, getWorkflows } from "../config/accessors";
+import {
+  generateTaskOverview,
+  generateInboxList,
+  generateTaskEval,
+  generateWritingMgmt,
+  generateLearningStatsDoc,
+  generateRecentActivity,
+} from "../services/WorkflowService";
 
 export class QuickActions {
   private container: HTMLElement;
@@ -17,50 +26,34 @@ export class QuickActions {
     this.container.empty();
     this.container.addClass("workspace-quick-actions");
 
-    // 快速创建按钮
+    // 快速创建按钮 - 从配置读取类型
     const createGroup = this.container.createDiv({ cls: "workspace-action-group" });
     createGroup.createSpan({ cls: "workspace-action-label", text: "创建：" });
 
-    const createButtons = [
-      { type: "task", label: "任务" },
-      { type: "idea", label: "想法" },
-      { type: "project", label: "项目" },
-      { type: "inspiration", label: "灵感" },
-      { type: "writing", label: "写作" },
-      { type: "learning", label: "学习" },
-      { type: "diary", label: "日志" },
-    ];
-
-    createButtons.forEach((btn) => {
-      const button = createGroup.createDiv({ cls: "workspace-action-btn create", text: btn.label });
-      button.addEventListener("click", () => this.openCreateModal(btn.type));
+    const types = getTypes(this.app);
+    types.forEach((type) => {
+      const button = createGroup.createDiv({ cls: "workspace-action-btn create", text: type.name });
+      button.addEventListener("click", () => this.openCreateModal(type.id));
     });
 
     this.container.createDiv({ cls: "workspace-action-separator" });
 
-    // 工作流按钮
+    // 工作流按钮 - 从配置读取
     const workflowGroup = this.container.createDiv({ cls: "workspace-action-group" });
     workflowGroup.createSpan({ cls: "workspace-action-label", text: "工作流：" });
 
-    const workflowButtons = [
-      { id: "daily-start", label: "每日开始" },
-      { id: "task-overview", label: "任务总览" },
-      { id: "inbox-list", label: "待整理清单" },
-      { id: "task-eval", label: "任务评估" },
-      { id: "writing-mgmt", label: "写作管理" },
-      { id: "learning-stats", label: "学习统计" },
-      { id: "recent-activity", label: "最近动态" },
-    ];
-
-    workflowButtons.forEach((btn) => {
-      const button = workflowGroup.createDiv({ cls: "workspace-action-btn workflow", text: btn.label });
-      button.addEventListener("click", () => this.handleWorkflowAction(btn.id));
+    const workflows = getWorkflows(this.app);
+    workflows.forEach((wf) => {
+      const button = workflowGroup.createDiv({ cls: "workspace-action-btn workflow", text: wf.label });
+      button.addEventListener("click", () => this.handleWorkflowAction(wf.id));
     });
   }
 
   private openCreateModal(type: string): void {
     new CreateNoteModal(this.app, type, async (path, content) => {
       try {
+        const folder = path.split("/").slice(0, -1).join("/");
+        await ensureFolder(this.app, folder);
         const file = await this.app.vault.create(path, content);
         this.app.workspace.openLinkText(file.path, "");
       } catch (error) {
@@ -70,79 +63,30 @@ export class QuickActions {
     }).open();
   }
 
-  private handleWorkflowAction(actionId: string): void {
+  private async handleWorkflowAction(actionId: string): Promise<void> {
     switch (actionId) {
       case "daily-start":
-        this.dailyStart();
+        (this.app as any).commands.executeCommandById("obsidian-workspace-plugin:create-daily-plan");
         break;
       case "task-overview":
-        this.showTaskOverview();
+        await generateTaskOverview(this.app);
         break;
       case "inbox-list":
-        this.showInboxList();
+        await generateInboxList(this.app);
         break;
       case "task-eval":
-        this.showTaskEval();
+        await generateTaskEval(this.app);
         break;
       case "writing-mgmt":
-        this.showWritingMgmt();
+        await generateWritingMgmt(this.app);
         break;
       case "learning-stats":
         if (this.onSwitchTab) this.onSwitchTab("analysis");
+        await generateLearningStatsDoc(this.app);
         break;
       case "recent-activity":
-        this.showRecentActivity();
+        await generateRecentActivity(this.app);
         break;
     }
-  }
-
-  private async dailyStart(): Promise<void> {
-    // 调用命令来创建日计划（包含周计划关联逻辑）
-    (this.app as any).commands.executeCommandById("obsidian-workspace-plugin:create-daily-plan");
-  }
-
-  private showTaskOverview(): void {
-    const topics = getTopicsByStatus(this.app, "进行中");
-    if (topics.length === 0) {
-      new Notice("暂无进行中的任务");
-      return;
-    }
-    this.app.workspace.openLinkText(topics[0].path, "");
-  }
-
-  private showInboxList(): void {
-    const files = this.app.vault.getMarkdownFiles().filter(f => f.path.startsWith("待整理/"));
-    if (files.length === 0) {
-      new Notice("待整理文件夹为空");
-      return;
-    }
-    this.app.workspace.openLinkText(files[0].path, "");
-  }
-
-  private showTaskEval(): void {
-    const topics = getTopicsByStatus(this.app, "待评估");
-    if (topics.length === 0) {
-      new Notice("暂无待评估的任务");
-      return;
-    }
-    this.app.workspace.openLinkText(topics[0].path, "");
-  }
-
-  private showWritingMgmt(): void {
-    const topics = getTopicsByStatus(this.app, "进行中").filter(t => t.type === "写作");
-    if (topics.length === 0) {
-      new Notice("暂无进行中的写作");
-      return;
-    }
-    this.app.workspace.openLinkText(topics[0].path, "");
-  }
-
-  private showRecentActivity(): void {
-    const files = getRecentFiles(this.app, 7);
-    if (files.length === 0) {
-      new Notice("暂无最近活动");
-      return;
-    }
-    this.app.workspace.openLinkText(files[0].path, "");
   }
 }

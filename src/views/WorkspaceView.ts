@@ -6,6 +6,7 @@ import { ActionTab } from "./tabs/ActionTab";
 import { KnowledgeTab } from "./tabs/KnowledgeTab";
 import { AnalysisTab } from "./tabs/AnalysisTab";
 import { ReadingTab } from "./tabs/ReadingTab";
+import { getViewTitle, getTabs, getLimit } from "../config/accessors";
 
 export const VIEW_TYPE_WORKSPACE = "workspace-view";
 
@@ -31,7 +32,7 @@ export class WorkspaceView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "智能工作台";
+    return getViewTitle(this.app);
   }
 
   getIcon(): string {
@@ -110,7 +111,7 @@ export class WorkspaceView extends ItemView {
     }
     this.refreshTimeout = setTimeout(() => {
       this.refresh();
-    }, 500); // 500ms 延迟
+    }, getLimit(this.app, "debounceDelay"));
   }
 
   // 刷新工作台
@@ -127,17 +128,12 @@ export class WorkspaceView extends ItemView {
   private createTabNav(container: HTMLElement): void {
     const nav = container.createDiv({ cls: "workspace-tab-nav" });
 
-    const tabs = [
-      { id: "action", label: "行动指北" },
-      { id: "knowledge", label: "知识管理" },
-      { id: "analysis", label: "学习分析" },
-      { id: "reading", label: "稍后阅读" },
-    ];
+    const tabs = getTabs(this.app);
 
     tabs.forEach((tab) => {
       const tabEl = nav.createDiv({
         cls: `workspace-tab-item ${tab.id === this.activeTab ? "active" : ""}`,
-        text: tab.label,
+        text: tab.name,
       });
       tabEl.dataset.tabId = tab.id;
       tabEl.addEventListener("click", () => this.switchTab(tab.id));
