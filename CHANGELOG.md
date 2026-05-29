@@ -12,6 +12,9 @@
 ### Added
 - 属性下拉框功能（PropertyService）— 注册 status/学习状态/type 字段为 Obsidian select 属性类型，支持编辑器自动补全（**已实现未测试**）
 
+### Fixed
+- 模块清单文档生成改为 tag 匹配，与卡片计数逻辑一致（修复"未分类"显示 0/20 但点进去有 61 篇的问题）
+
 ### Changed
 - 整理工程文档体系，旧文档归档到 `docs/archive/`
 
